@@ -150,8 +150,21 @@ var escapeKey =
 
 var newOrMoveStream = newPointStream.pipe(merge(movePointStream.pipe(map(pair => pair[0]))));
 
-Rx.combineLatest(mouseMove.pipe(map(eventToSvgSpace)), newOrMoveStream)
-    .subscribe(([mouseInSvgSpace, lastPoint]) => {
+Rx.combineLatest(mouseMove, newOrMoveStream)
+    .subscribe(([mouse, lastPoint]) => {
+
+        var mouseInSvgSpace = eventToSvgSpace(mouse);
+
+        if(mouse.shiftKey)
+        {
+            if(Math.abs(mouse.x - lastPoint.x) > Math.abs(mouse.y + lastPoint.y))
+            {
+                mouseInSvgSpace.y = lastPoint.y;
+            }else{
+                mouseInSvgSpace.x = lastPoint.x;
+            }
+        }
+
         line.x1.baseVal.value = lastPoint.x;
         line.y1.baseVal.value = lastPoint.y;
 

@@ -1,4 +1,4 @@
-// TODO get comments for operators.
+// tODO get comments for operators.
 /// <reference path="index.d.ts" />
 var Rx = rxjs;
 var _a = rxjs.operators, filter = _a.filter, switchMap = _a.switchMap, map = _a.map, mapTo = _a.mapTo, takeUntil = _a.takeUntil, merge = _a.merge, bufferWhen = _a.bufferWhen, debounceTime = _a.debounceTime, distinctUntilChanged = _a.distinctUntilChanged, pairwise = _a.pairwise, scan = _a.scan;
@@ -6,11 +6,11 @@ var svg = document.getElementsByTagName("svg")[0];
 var polyline = document.getElementsByTagName("polyline")[0];
 var circle = document.getElementsByTagName("circle")[0];
 var line = document.getElementsByTagName("line")[0];
-var mouseDown = Rx.fromEvent(svg, 'mousedown');
-var mouseUp = Rx.fromEvent(svg, 'mouseup');
-var mouseWheel = Rx.fromEvent(document, 'wheel');
-var mouseMove = Rx.fromEvent(svg, 'mousemove');
-var keyUp = Rx.fromEvent(document, 'keyup');
+var mouseDown = Rx.fromEvent(svg, "mousedown");
+var mouseUp = Rx.fromEvent(svg, "mouseup");
+var mouseWheel = Rx.fromEvent(document, "wheel");
+var mouseMove = Rx.fromEvent(svg, "mousemove");
+var keyUp = Rx.fromEvent(document, "keyup");
 var getState = function () { return Array.from(polyline.points).map(function (p) { return ({ x: p.x, y: p.y }); }); };
 // #region ZOOM
 mouseWheel
@@ -29,7 +29,7 @@ mouseWheel
 });
 // #endregion ZOOM
 // #region PAN
-var panMovements = mouseDown.pipe(filter(function (x) { return x.button == 1; } /* Mouse Wheel Button */), switchMap(function (e) {
+var panMovements = mouseDown.pipe(filter(function (x) { return x.button === 1; } /* Mouse Wheel Button */), switchMap(function (e) {
     e.preventDefault();
     return mouseMove.pipe(map(eventToSvgSpace), takeUntil(mouseUp), pairwise(), map(function (_a) {
         var previous = _a[0], next = _a[1];
@@ -42,12 +42,12 @@ panMovements
     svg.viewBox.baseVal.y -= diff.y;
 });
 // #endregion
-// #region replaying state 
+// #region replaying state
 var initialState = Rx
-    .from(JSON.parse(localStorage.getItem('polyline-state') || '[]'))
+    .from(JSON.parse(localStorage.getItem("polyline-state") || "[]"))
     .pipe(map(function (p) { return newSVGPoint(p.x, p.y); }), slowMo(100));
 // #endregion
-var newPointStream = mouseDown.pipe(filter(function (e) { return !isCircle(e.target); }), filter(function (x) { return x.button == 0; } /* Left Click */), map(eventToSvgSpace), merge(initialState));
+var newPointStream = mouseDown.pipe(filter(function (e) { return !isCircle(e.target); }), filter(function (x) { return x.button === 0; } /* Left Click */), map(eventToSvgSpace), merge(initialState));
 newPointStream
     .subscribe(function (point) {
     polyline.points.appendItem(point);
@@ -55,9 +55,9 @@ newPointStream
         r: 15,
         cx: point.x,
         cy: point.y,
-        'stroke-width': 3,
-        stroke: 'cyan',
-        fill: 'white',
+        "stroke-width": 3,
+        stroke: "cyan",
+        fill: "white",
         index: polyline.points.numberOfItems - 1
     }));
 });
@@ -72,15 +72,24 @@ movePointStream
     var svgPoint = _a[0], circle = _a[1];
     circle.cx.baseVal.value = svgPoint.x;
     circle.cy.baseVal.value = svgPoint.y;
-    var index = parseInt(circle.getAttribute('index'));
+    var index = parseInt(circle.getAttribute("index"), 10);
     polyline.points.replaceItem(svgPoint, index);
 });
-// #endregion 
-var escapeKey = keyUp.pipe(filter(function (e) { return e.keyCode == 27; } /* Escape */), mapTo(false), scan(function (previous, _) { return !previous; }, false));
+// #endregion
+var escapeKey = keyUp.pipe(filter(function (e) { return e.keyCode === 27; } /* Escape */), mapTo(false), scan(function (previous, _) { return !previous; }, false));
 var newOrMoveStream = newPointStream.pipe(merge(movePointStream.pipe(map(function (pair) { return pair[0]; }))));
-Rx.combineLatest(mouseMove.pipe(map(eventToSvgSpace)), newOrMoveStream)
+Rx.combineLatest(mouseMove, newOrMoveStream)
     .subscribe(function (_a) {
-    var mouseInSvgSpace = _a[0], lastPoint = _a[1];
+    var mouse = _a[0], lastPoint = _a[1];
+    var mouseInSvgSpace = eventToSvgSpace(mouse);
+    if (mouse.shiftKey) {
+        if (Math.abs(mouse.x - lastPoint.x) > Math.abs(mouse.y + lastPoint.y)) {
+            mouseInSvgSpace.y = lastPoint.y;
+        }
+        else {
+            mouseInSvgSpace.x = lastPoint.x;
+        }
+    }
     line.x1.baseVal.value = lastPoint.x;
     line.y1.baseVal.value = lastPoint.y;
     line.x2.baseVal.value = mouseInSvgSpace.x;
@@ -88,7 +97,7 @@ Rx.combineLatest(mouseMove.pipe(map(eventToSvgSpace)), newOrMoveStream)
 });
 // #region save state
 Rx.merge(newPointStream, movePointStream)
-    .subscribe(function (_) { return localStorage.setItem('polyline-state', JSON.stringify(getState())); });
+    .subscribe(function (_) { return localStorage.setItem("polyline-state", JSON.stringify(getState())); });
 // #endregion
 function newCircle(attributes) {
     var circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");

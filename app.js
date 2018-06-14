@@ -1,27 +1,33 @@
-// TODO get comments for operators.
+// tODO get comments for operators.
 /// <reference path="index.d.ts" />
-var Rx = rxjs;
-var _a = rxjs.operators, filter = _a.filter, switchMap = _a.switchMap, map = _a.map, mapTo = _a.mapTo, takeUntil = _a.takeUntil, merge = _a.merge, bufferWhen = _a.bufferWhen, debounceTime = _a.debounceTime, distinctUntilChanged = _a.distinctUntilChanged, pairwise = _a.pairwise, scan = _a.scan;
+const Rx = rxjs;
+const { filter, switchMap, map, mapTo, takeUntil, merge, bufferWhen, debounceTime, distinctUntilChanged, pairwise, tap, scan } = rxjs.operators;
 var svg = document.getElementsByTagName("svg")[0];
 var polyline = document.getElementsByTagName("polyline")[0];
-var circle = document.getElementsByTagName("circle")[0];
 var line = document.getElementsByTagName("line")[0];
-var mouseDown = Rx.fromEvent(svg, 'mousedown');
-var mouseUp = Rx.fromEvent(svg, 'mouseup');
-var mouseWheel = Rx.fromEvent(document, 'wheel');
-var mouseMove = Rx.fromEvent(svg, 'mousemove');
-var keyUp = Rx.fromEvent(document, 'keyup');
-var getState = function () { return Array.from(polyline.points).map(function (p) { return ({ x: p.x, y: p.y }); }); };
+var clearBtn = document.getElementById("clear");
+var addBtn = document.getElementById("add");
+var clearBtnEvents = Rx.fromEvent(clearBtn, "click");
+var addBtnEvents = Rx.fromEvent(addBtn, "click");
+const mouseDown = Rx.fromEvent(svg, "mousedown");
+const mouseUp = Rx.fromEvent(svg, "mouseup");
+const mouseWheel = Rx.fromEvent(document, "wheel");
+const mouseMove = Rx.fromEvent(svg, "mousemove");
+const touchDown = Rx.fromEvent(svg, "touchstart").pipe(map(t => t.touches[0]));
+const touchUp = Rx.fromEvent(svg, "touchend").pipe(map(t => t.touches[0]));
+const touchMove = Rx.fromEvent(svg, "touchmove").pipe(map(t => t.touches[0]));
+const keyUp = Rx.fromEvent(document, "keyup");
+const getState = () => Array.from(polyline.points).map(p => ({ x: p.x, y: p.y }));
 // #region ZOOM
 mouseWheel
-    .pipe(map(function (wheelEvent) {
+    .pipe(map(wheelEvent => {
     wheelEvent.preventDefault();
     wheelEvent.stopPropagation();
     return wheelEvent.deltaY > 0 ? 1.1 : 1 / 1.1;
 }))
-    .subscribe(function (zoom) {
-    var oldHeight = svg.viewBox.baseVal.height;
-    var oldWidth = svg.viewBox.baseVal.width;
+    .subscribe(zoom => {
+    const oldHeight = svg.viewBox.baseVal.height;
+    const oldWidth = svg.viewBox.baseVal.width;
     svg.viewBox.baseVal.width *= zoom;
     svg.viewBox.baseVal.height *= zoom;
     svg.viewBox.baseVal.x += (oldWidth - svg.viewBox.baseVal.width) / 2;
@@ -29,89 +35,112 @@ mouseWheel
 });
 // #endregion ZOOM
 // #region PAN
-var panMovements = mouseDown.pipe(filter(function (x) { return x.button == 1; } /* Mouse Wheel Button */), switchMap(function (e) {
+var panMovements = mouseDown.pipe(filter(x => x.button === 1 /* Mouse Wheel Button */), switchMap(e => {
     e.preventDefault();
-    return mouseMove.pipe(map(eventToSvgSpace), takeUntil(mouseUp), pairwise(), map(function (_a) {
-        var previous = _a[0], next = _a[1];
-        return ({ x: next.x - previous.x, y: next.y - previous.y });
-    }), bufferWhen(function () { return mouseUp; }), switchMap(function (buffer) { return Rx.from(buffer); }));
+    return mouseMove.pipe(map(eventToSvgSpace), takeUntil(mouseUp), pairwise(), 
+    // ---e1----e2------e3---
+    // ---------[e1,e2]-[e2,e3]-
+    map(([previous, next]) => ({ x: next.x - previous.x, y: next.y - previous.y })), 
+    // ---e-e-e-e-e-e-e-e-
+    // -----------------^-------
+    // -----------------[e,e,e,e,e,e,e]--
+    bufferWhen(() => mouseUp));
 }));
 panMovements
-    .subscribe(function (diff) {
-    svg.viewBox.baseVal.x -= diff.x;
-    svg.viewBox.baseVal.y -= diff.y;
+    .subscribe(diffs => {
+    for (var diff of diffs) {
+        svg.viewBox.baseVal.x -= diff.x;
+        svg.viewBox.baseVal.y -= diff.y;
+    }
 });
 // #endregion
-// #region replaying state 
+// #region replaying state
 var initialState = Rx
-    .from(JSON.parse(localStorage.getItem('polyline-state') || '[]'))
-    .pipe(map(function (p) { return newSVGPoint(p.x, p.y); }), slowMo(100));
+    .from(JSON.parse(localStorage.getItem("polyline-state") || "[]"))
+    .pipe(map(p => newSVGPoint(p.x, p.y)), slowMo(100));
 // #endregion
-var newPointStream = mouseDown.pipe(filter(function (e) { return !isCircle(e.target); }), filter(function (x) { return x.button == 0; } /* Left Click */), map(eventToSvgSpace), merge(initialState));
+var addNodesStream = addBtnEvents.pipe(switchMap(_ => Rx.range(1, 100, Rx.animationFrame).pipe(map(i => ({ x: Math.random() * 500, y: Math.random() * 500 })), map(p => newSVGPoint(p.x, p.y)))));
+var newPointStream = mouseDown.pipe(filter(e => !isCircle(e.target)), filter(x => x.button === 0 /* Left Click */), map(eventToSvgSpace), merge(addNodesStream), merge(initialState));
 newPointStream
-    .subscribe(function (point) {
+    .subscribe(point => {
     polyline.points.appendItem(point);
-    svg.appendChild(newCircle({
-        r: 15,
+    svg.getElementById("circles").appendChild(newCircle({
+        r: 3,
         cx: point.x,
         cy: point.y,
-        'stroke-width': 3,
-        stroke: 'cyan',
-        fill: 'white',
+        "stroke-width": 1,
+        "vector-effect": "non-scaling-stroke",
+        stroke: "cyan",
+        fill: "grey",
+        "fill-opacity": "0.2",
         index: polyline.points.numberOfItems - 1
     }));
 });
 // #region MOVE
 var movePointStream = mouseDown
-    .pipe(filter(function (e) { return isCircle(e.target); }), switchMap(function (e) {
+    .pipe(filter(e => isCircle(e.target)), switchMap(e => {
     e.preventDefault();
-    return mouseMove.pipe(map(eventToSvgSpace), takeUntil(mouseUp), map(function (p) { return [p, e.target]; }));
+    return mouseMove.pipe(map(eventToSvgSpace), takeUntil(mouseUp), map(p => [p, e.target]));
 }));
 movePointStream
-    .subscribe(function (_a) {
-    var svgPoint = _a[0], circle = _a[1];
+    .subscribe(([svgPoint, circle]) => {
     circle.cx.baseVal.value = svgPoint.x;
     circle.cy.baseVal.value = svgPoint.y;
-    var index = parseInt(circle.getAttribute('index'));
+    var index = parseInt(circle.getAttribute("index"), 10);
     polyline.points.replaceItem(svgPoint, index);
 });
-// #endregion 
-var escapeKey = keyUp.pipe(filter(function (e) { return e.keyCode == 27; } /* Escape */), mapTo(false), scan(function (previous, _) { return !previous; }, false));
-var newOrMoveStream = newPointStream.pipe(merge(movePointStream.pipe(map(function (pair) { return pair[0]; }))));
+// #endregion
+var newOrMoveStream = newPointStream.pipe(merge(movePointStream.pipe(map(pair => pair[0]))));
+// ----a1---------------a2-------a
+// ----b1-------b2--------------------b
+// ----[a1,b1]---[a1,b2]-[a2,b2]----
 Rx.combineLatest(mouseMove.pipe(map(eventToSvgSpace)), newOrMoveStream)
-    .subscribe(function (_a) {
-    var mouseInSvgSpace = _a[0], lastPoint = _a[1];
+    .subscribe(([mouseInSvgSpace, lastPoint]) => {
     line.x1.baseVal.value = lastPoint.x;
     line.y1.baseVal.value = lastPoint.y;
     line.x2.baseVal.value = mouseInSvgSpace.x;
     line.y2.baseVal.value = mouseInSvgSpace.y;
 });
+var clearEvent = keyUp.pipe(filter(e => e.keyCode === 27 /* Escape */), merge(clearBtnEvents), map(e => []), tap(clearDom));
+function clearDom() {
+    polyline.points.clear();
+    svg.getElementById('circles').innerHTML = '';
+}
+function* iterate(arr) {
+    for (var i = 0; i < arr.length; i++) {
+        yield arr[i];
+    }
+}
 // #region save state
+// newpoinstream ----e---e-e---e--e-
+// movePointStream ----m------m--
+// result        ----e-m-e-e-eme--e-
 Rx.merge(newPointStream, movePointStream)
-    .subscribe(function (_) { return localStorage.setItem('polyline-state', JSON.stringify(getState())); });
+    .pipe(debounceTime(1000), map(_ => getState()), merge(clearEvent))
+    .subscribe(state => localStorage.setItem("polyline-state", JSON.stringify(state)));
 // #endregion
 function newCircle(attributes) {
     var circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-    Object.keys(attributes).forEach(function (key) { return circle.setAttribute(key, attributes[key]); });
+    Object.keys(attributes).forEach(key => circle.setAttribute(key, attributes[key]));
     return circle;
 }
 function isCircle(target) {
     var circle = target;
     return circle.tagName.toLowerCase() === "circle";
 }
+// --e-e-e-e-e-e-e-eo
+// --e-----e------e-----e------e
 function slowMo(time) {
-    return function (observable) {
-        return new Rx.Observable(function (observer) {
-            var i = 1;
-            observable.subscribe(function (val) {
-                setTimeout(function (_) { return observer.next(val); }, time * i);
-                i++;
-            });
+    return (observable) => new Rx.Observable(observer => {
+        let i = 1;
+        observable.subscribe(val => {
+            setTimeout(_ => observer.next(val), time * i);
+            i++;
         });
-    };
+    });
 }
 function newSVGPoint(x, y) {
-    var clientPoint = svg.createSVGPoint();
+    const clientPoint = svg.createSVGPoint();
     clientPoint.x = x;
     clientPoint.y = y;
     return clientPoint;

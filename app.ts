@@ -35,14 +35,16 @@ const getState = () => Array.from<SVGPoint>(polyline.points as any).map(p => ({ 
 // #region ZOOM
 mouseWheel
     .pipe(
-        map(wheelEvent => {
+        map(wheelEvent =>
+        {
             wheelEvent.preventDefault();
             wheelEvent.stopPropagation();
 
             return wheelEvent.deltaY > 0 ? 1.1 : 1 / 1.1;
         }),
 )
-    .subscribe(zoom => {
+    .subscribe(zoom =>
+    {
         const oldHeight = svg.viewBox.baseVal.height;
         const oldWidth = svg.viewBox.baseVal.width;
 
@@ -58,7 +60,8 @@ mouseWheel
 // #region PAN
 var panMovements = mouseDown.pipe(
     filter(x => x.button === 1 /* Mouse Wheel Button */),
-    switchMap(e => {
+    switchMap(e =>
+    {
         e.preventDefault();
 
         return mouseMove.pipe(
@@ -73,7 +76,8 @@ var panMovements = mouseDown.pipe(
 );
 
 panMovements
-    .subscribe(diff => {
+    .subscribe(diff =>
+    {
         svg.viewBox.baseVal.x -= diff.x;
         svg.viewBox.baseVal.y -= diff.y;
     });
@@ -99,7 +103,8 @@ var newPointStream = mouseDown.pipe(
 );
 
 newPointStream
-    .subscribe(point => {
+    .subscribe(point =>
+    {
         polyline.points.appendItem(point);
 
         svg.appendChild(newCircle({
@@ -118,7 +123,8 @@ newPointStream
 var movePointStream = mouseDown
     .pipe(
         filter(e => isCircle(e.target)),
-        switchMap(e => {
+        switchMap(e =>
+        {
             e.preventDefault();
 
             return mouseMove.pipe(
@@ -130,7 +136,8 @@ var movePointStream = mouseDown
     );
 
 movePointStream
-    .subscribe(([svgPoint, circle]) => {
+    .subscribe(([svgPoint, circle]) =>
+    {
         circle.cx.baseVal.value = svgPoint.x;
         circle.cy.baseVal.value = svgPoint.y;
 
@@ -141,26 +148,30 @@ movePointStream
     });
 // #endregion
 
-var escapeKey =
+var escapeKeyState$ =
     keyUp.pipe(
+        spy("keyup"),
         filter(e => e.keyCode === 27 /* Escape */),
         mapTo(false),
-        scan((previous, _) => !previous, false)
+        scan((previous, _) => !previous, false),
+        spy("escapeKeyState$"),
     );
 
 var newOrMoveStream = newPointStream.pipe(merge(movePointStream.pipe(map(pair => pair[0]))));
 
-Rx.combineLatest(mouseMove, newOrMoveStream)
-    .subscribe(([mouse, lastPoint]) => {
-
+Rx.combineLatest(mouseMove, newOrMoveStream, escapeKeyState$)
+    .pipe(filter(([_,__,escapeKeyActive]) => escapeKeyActive))
+    .subscribe(([mouse, lastPoint]) =>
+    {
         var mouseInSvgSpace = eventToSvgSpace(mouse);
 
-        if(mouse.shiftKey)
+        if (mouse.shiftKey)
         {
-            if(Math.abs(mouse.x - lastPoint.x) > Math.abs(mouse.y + lastPoint.y))
+            if (Math.abs(mouse.x - lastPoint.x) > Math.abs(mouse.y + lastPoint.y))
             {
                 mouseInSvgSpace.y = lastPoint.y;
-            }else{
+            } else
+            {
                 mouseInSvgSpace.x = lastPoint.x;
             }
         }
@@ -178,7 +189,8 @@ Rx.merge(newPointStream, movePointStream)
 // #endregion
 
 
-function newCircle(attributes: {}) {
+function newCircle(attributes: {})
+{
     var circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
 
     Object.keys(attributes).forEach(key => circle.setAttribute(key, attributes[key]));
@@ -186,19 +198,23 @@ function newCircle(attributes: {}) {
     return circle;
 }
 
-function isCircle(target: EventTarget) {
+function isCircle(target: EventTarget)
+{
     var circle = target as Element;
 
     return circle.tagName.toLowerCase() === "circle";
 }
 
-function slowMo<T>(time: number) {
+function slowMo<T>(time: number)
+{
     return (observable: rxjs.Observable<T>) =>
-        new Rx.Observable<T>(observer => {
+        new Rx.Observable<T>(observer =>
+        {
 
             let i = 1;
 
-            observable.subscribe(val => {
+            observable.subscribe(val =>
+            {
                 setTimeout(_ => observer.next(val), time * i);
                 i++;
             });
@@ -208,7 +224,8 @@ function slowMo<T>(time: number) {
 
 
 
-function newSVGPoint(x: number, y: number) {
+function newSVGPoint(x: number, y: number)
+{
     const clientPoint = svg.createSVGPoint();
 
     clientPoint.x = x;
@@ -217,10 +234,46 @@ function newSVGPoint(x: number, y: number) {
     return clientPoint;
 }
 
-function toSVGSpace(x: number, y: number) {
+function toSVGSpace(x: number, y: number)
+{
     return newSVGPoint(x, y).matrixTransform(svg.getScreenCTM().inverse());
 }
 
-function eventToSvgSpace(e: MouseEvent) {
+function eventToSvgSpace(e: MouseEvent)
+{
     return toSVGSpace(e.clientX, e.clientY);
+}
+
+
+function spy<T>(name: string)
+{
+    return (source: rxjs.Observable<T>) =>
+    {
+        return new Rx.Observable<T>(observer =>
+        {
+            console.log(name, "subscribed");
+            var sub = source.subscribe(value =>
+                {
+                    console.log(name, "next ", value);
+                    observer.next(value);
+                },
+                error =>
+                {
+                    console.log(name, "error ", error);
+                    observer.error(error);
+                },
+                () =>
+                {
+                    console.log(name, "complete ");
+                    observer.complete();
+                }
+            );
+
+            return () =>
+            {
+                console.log(name, "disposed");
+                sub.unsubscribe();
+            };
+        });
+    }
 }

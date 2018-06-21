@@ -76,9 +76,13 @@ movePointStream
     polyline.points.replaceItem(svgPoint, index);
 });
 // #endregion
-var escapeKey = keyUp.pipe(filter(function (e) { return e.keyCode === 27; } /* Escape */), mapTo(false), scan(function (previous, _) { return !previous; }, false));
+var escapeKeyState$ = keyUp.pipe(spy("keyup"), filter(function (e) { return e.keyCode === 27; } /* Escape */), mapTo(false), scan(function (previous, _) { return !previous; }, false), spy("escapeKeyState$"));
 var newOrMoveStream = newPointStream.pipe(merge(movePointStream.pipe(map(function (pair) { return pair[0]; }))));
-Rx.combineLatest(mouseMove, newOrMoveStream)
+Rx.combineLatest(mouseMove, newOrMoveStream, escapeKeyState$)
+    .pipe(filter(function (_a) {
+    var _ = _a[0], __ = _a[1], escapeKeyActive = _a[2];
+    return escapeKeyActive;
+}))
     .subscribe(function (_a) {
     var mouse = _a[0], lastPoint = _a[1];
     var mouseInSvgSpace = eventToSvgSpace(mouse);
@@ -130,5 +134,26 @@ function toSVGSpace(x, y) {
 }
 function eventToSvgSpace(e) {
     return toSVGSpace(e.clientX, e.clientY);
+}
+function spy(name) {
+    return function (source) {
+        return new Rx.Observable(function (observer) {
+            console.log(name, "subscribed");
+            var sub = source.subscribe(function (value) {
+                console.log(name, "next ", value);
+                observer.next(value);
+            }, function (error) {
+                console.log(name, "error ", error);
+                observer.error(error);
+            }, function () {
+                console.log(name, "complete ");
+                observer.complete();
+            });
+            return function () {
+                console.log(name, "disposed");
+                sub.unsubscribe();
+            };
+        });
+    };
 }
 //# sourceMappingURL=app.js.map
